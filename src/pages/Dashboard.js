@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
@@ -16,19 +16,20 @@ export default function Dashboard() {
   const [saved, setSaved] = useState(false);
 
   // Load current permissions and claims from Firestore
-  useEffect(() => {
-    const loadData = async () => {
-      // 1. Load Permissions
-      const docRef = doc(db, "settings", "permissions");
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setPermissions(docSnap.data());
-      }
+  const loadData = async () => {
+    // 1. Load Permissions
+    const docRef = doc(db, "settings", "permissions");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      setPermissions(docSnap.data());
+    }
 
-      // 2. Load Claims
-      const claimSnap = await getDocs(collection(db, "claims"));
-      setClaims(claimSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
+    // 2. Load Claims
+    const claimSnap = await getDocs(collection(db, "claims"));
+    setClaims(claimSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
 
@@ -49,6 +50,25 @@ export default function Dashboard() {
       alert("Error saving: " + err.message);
     }
     setSaving(false);
+  };
+
+  // NEW: Handle Approving or Rejecting a Claim
+  const handleClaimAction = async (claimId, itemId, action) => {
+    if (action === "approve") {
+      if (window.confirm("Approve this claim? This will mark the item as Returned.")) {
+        // Update claim status
+        await updateDoc(doc(db, "claims", claimId), { status: "approved" });
+        // Update item status to returned
+        await updateDoc(doc(db, "items", itemId), { status: "returned" });
+        alert("Claim approved and item marked as returned!");
+      }
+    } else {
+      if (window.confirm("Reject this claim?")) {
+        await updateDoc(doc(db, "claims", claimId), { status: "rejected" });
+        alert("Claim rejected.");
+      }
+    }
+    loadData(); // Refresh the table
   };
 
   const handleLogout = async () => {
@@ -122,6 +142,8 @@ export default function Dashboard() {
                 <th style={styles.th}>Item</th>
                 <th style={styles.th}>Claimant Email</th>
                 <th style={styles.th}>Message</th>
+                <th style={styles.th}>Status</th>
+                <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -130,6 +152,23 @@ export default function Dashboard() {
                   <td style={styles.td}><strong>{c.itemTitle}</strong></td>
                   <td style={styles.td}>{c.claimantEmail}</td>
                   <td style={styles.td}>{c.message}</td>
+                  <td style={styles.td}>
+                    <span style={{ 
+                      padding: "4px 8px", borderRadius: 4, fontSize: 12, fontWeight: "bold",
+                      background: c.status === "pending" ? "#fef3c7" : c.status === "approved" ? "#dcfce7" : "#fee2e2",
+                      color: c.status === "pending" ? "#92400e" : c.status === "approved" ? "#166534" : "#991b1b"
+                    }}>
+                      {c.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {c.status === "pending" && (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => handleClaimAction(c.id, c.itemId, "approve")} style={{ padding: "6px", background: "#10b981", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>Approve</button>
+                        <button onClick={() => handleClaimAction(c.id, c.itemId, "reject")} style={{ padding: "6px", background: "#ef4444", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>Reject</button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -141,14 +180,14 @@ export default function Dashboard() {
 }
 
 const styles = {
-  container: { maxWidth: 800, margin: "40px auto", padding: 20 },
+  container: { maxWidth: 900, margin: "40px auto", padding: 20 },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   subtitle: { color: "#555", marginBottom: 20 },
   logoutBtn: { padding: "8px 16px", background: "#dc2626", color: "white", border: "none", borderRadius: 6, cursor: "pointer" },
-  card: { background: "white", padding: 24, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
+  card: { background: "white", padding: 24, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", overflowX: "auto" },
   table: { width: "100%", borderCollapse: "collapse", marginTop: 16, marginBottom: 24 },
   th: { textAlign: "left", padding: 12, borderBottom: "2px solid #eee", background: "#f9fafb" },
   td: { padding: 12, borderBottom: "1px solid #eee" },
   checkbox: { width: 20, height: 20, cursor: "pointer" },
   saveBtn: { padding: "12px 24px", background: "#2563eb", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 16, fontWeight: "bold" },
-};
+};                  
