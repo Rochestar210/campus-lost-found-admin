@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
@@ -11,19 +11,25 @@ export default function Dashboard() {
     finder: { read: true, write: true },
     admin: { read: true, write: true },
   });
+  const [claims, setClaims] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Load current permissions from Firestore
+  // Load current permissions and claims from Firestore
   useEffect(() => {
-    const loadPerms = async () => {
+    const loadData = async () => {
+      // 1. Load Permissions
       const docRef = doc(db, "settings", "permissions");
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setPermissions(docSnap.data());
       }
+
+      // 2. Load Claims
+      const claimSnap = await getDocs(collection(db, "claims"));
+      setClaims(claimSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     };
-    loadPerms();
+    loadData();
   }, []);
 
   const handleToggle = (role, action) => {
@@ -60,6 +66,7 @@ export default function Dashboard() {
         Configure read and write permissions for actors accessing the Campus Lost & Found modules.
       </p>
 
+      {/* RBAC Table */}
       <div style={styles.card}>
         <h2>Role-Based Access Control (RBAC)</h2>
         <table style={styles.table}>
@@ -101,6 +108,33 @@ export default function Dashboard() {
           {saving ? "Saving..." : "Save Permissions"}
         </button>
         {saved && <p style={{ color: "green", marginTop: 10 }}>✅ Permissions saved successfully!</p>}
+      </div>
+
+      {/* Claims Messages Table */}
+      <div style={{ ...styles.card, marginTop: 30 }}>
+        <h2>📩 Claim Messages</h2>
+        {claims.length === 0 ? (
+          <p style={{ marginTop: 10, color: "#666" }}>No claims yet.</p>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Item</th>
+                <th style={styles.th}>Claimant Email</th>
+                <th style={styles.th}>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {claims.map(c => (
+                <tr key={c.id}>
+                  <td style={styles.td}><strong>{c.itemTitle}</strong></td>
+                  <td style={styles.td}>{c.claimantEmail}</td>
+                  <td style={styles.td}>{c.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
